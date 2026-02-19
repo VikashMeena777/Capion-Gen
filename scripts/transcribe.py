@@ -50,7 +50,7 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
 
     result = pipe(
         audio_path,
-        return_timestamps="word",
+        return_timestamps=True,
         chunk_length_s=30,
         batch_size=1,
     )
@@ -59,33 +59,43 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
     print(f"Transcription complete in {transcribe_time:.1f}s")
 
     # Parse output into caption format
+    # Use chunk-level timestamps and distribute words evenly within each chunk
     captions = []
     full_text_parts = []
 
     if "chunks" in result:
-        # Word-level timestamps available
         for chunk in result["chunks"]:
-            word = chunk["text"].strip()
-            if not word:
+            chunk_text = chunk["text"].strip()
+            if not chunk_text:
                 continue
 
             timestamps = chunk.get("timestamp", (0, 0))
-            start_ms = int((timestamps[0] or 0) * 1000)
-            end_ms = int((timestamps[1] or start_ms + 200) * 1000)
+            chunk_start_s = timestamps[0] or 0
+            chunk_end_s = timestamps[1] or (chunk_start_s + 1)
 
-            captions.append({
-                "text": word,
-                "startMs": start_ms,
-                "endMs": end_ms,
-                "confidence": 0.9,
-            })
-            full_text_parts.append(word)
+            words = chunk_text.split()
+            if not words:
+                continue
+
+            # Distribute time evenly across words in the chunk
+            chunk_duration = chunk_end_s - chunk_start_s
+            word_duration = chunk_duration / len(words)
+
+            for i, word in enumerate(words):
+                start_ms = int((chunk_start_s + i * word_duration) * 1000)
+                end_ms = int((chunk_start_s + (i + 1) * word_duration) * 1000)
+
+                captions.append({
+                    "text": word,
+                    "startMs": start_ms,
+                    "endMs": end_ms,
+                    "confidence": 0.9,
+                })
+                full_text_parts.append(word)
     else:
-        # Fallback: no word-level timestamps, split by sentence
+        # Fallback: no timestamps at all
         text = result.get("text", "")
         words = text.split()
-        # Estimate timing based on word count
-        duration_estimate = len(words) * 300  # ~300ms per word
         for i, word in enumerate(words):
             start_ms = i * 300
             end_ms = start_ms + 280
