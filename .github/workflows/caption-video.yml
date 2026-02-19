@@ -134,18 +134,17 @@ jobs:
 
       # ─── Upload to Google Drive via rclone ───
       - name: ☁️ Install rclone
-        if: ${{ secrets.GDRIVE_FOLDER_ID != '' }}
         run: |
           curl https://rclone.org/install.sh | sudo bash
           rclone version
 
       - name: ☁️ Upload to Google Drive (rclone)
-        if: ${{ secrets.GDRIVE_FOLDER_ID != '' }}
         env:
           RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
           RCLONE_REMOTE: gdrive
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
-          python scripts/upload_gdrive.py remotion-captions/output.mp4 "${{ secrets.GDRIVE_FOLDER_ID }}"
+          python scripts/upload_gdrive.py remotion-captions/output.mp4 "$GDRIVE_FOLDER_ID"
 
       # ─── Upload Artifact (Backup) ───
       - name: 📦 Upload as GitHub Artifact
