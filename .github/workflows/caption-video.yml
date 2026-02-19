@@ -142,7 +142,6 @@ jobs:
       - name: Upload to Google Drive
         env:
           RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
-          RCLONE_REMOTE: gdrive
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
           python scripts/upload_gdrive.py remotion-captions/output.mp4 "$GDRIVE_FOLDER_ID"
