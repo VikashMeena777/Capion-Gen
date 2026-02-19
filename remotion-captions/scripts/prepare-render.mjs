@@ -7,7 +7,7 @@
  * for Remotion render CLI.
  */
 
-import { readFileSync, writeFileSync, statSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { execSync } from "child_process";
 
 const args = process.argv.slice(2);
@@ -22,8 +22,9 @@ const CAPTION_Y = parseInt(process.env.CAPTION_Y_POSITION || "72", 10);
 const MAX_WORDS = parseInt(process.env.MAX_WORDS_PER_PAGE || "3", 10);
 const BG_OPACITY = parseFloat(process.env.BG_OPACITY || "0.6");
 const STROKE_WIDTH = parseInt(process.env.STROKE_WIDTH || "4", 10);
+const FPS = 30;
 
-console.log("📦 Preparing Remotion render props...");
+console.log("Preparing Remotion render props...");
 
 // 1. Read captions
 const captionsRaw = readFileSync(captionsPath, "utf-8");
@@ -38,32 +39,55 @@ const captions = captionsData.captions.map((w) => ({
     confidence: w.confidence,
 }));
 
-console.log(`   📝 Loaded ${captions.length} words`);
+console.log(`  Loaded ${captions.length} words`);
+if (captions.length > 0) {
+    console.log(`  First caption: "${captions[0].text}" at ${captions[0].startMs}ms`);
+    console.log(`  Last caption: "${captions[captions.length - 1].text}" at ${captions[captions.length - 1].endMs}ms`);
+}
 
-// 2. Get video duration via ffprobe
+// 2. Get video duration and dimensions via ffprobe
 let videoDurationMs = 30000; // fallback 30s
+let videoWidth = 1080;
+let videoHeight = 1920;
+
 try {
-    const ffprobeOutput = execSync(
+    // Get duration
+    const durationOutput = execSync(
         `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${videoPath}"`,
         { encoding: "utf-8" }
     ).trim();
-    videoDurationMs = Math.ceil(parseFloat(ffprobeOutput) * 1000);
-    console.log(`   🎥 Video duration: ${(videoDurationMs / 1000).toFixed(1)}s`);
+    videoDurationMs = Math.ceil(parseFloat(durationOutput) * 1000);
+    console.log(`  Video duration: ${(videoDurationMs / 1000).toFixed(1)}s`);
+
+    // Get dimensions
+    const dimensionsOutput = execSync(
+        `ffprobe -v quiet -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${videoPath}"`,
+        { encoding: "utf-8" }
+    ).trim();
+    const [w, h] = dimensionsOutput.split(",").map(Number);
+    if (w && h) {
+        videoWidth = w;
+        videoHeight = h;
+        console.log(`  Video dimensions: ${videoWidth}x${videoHeight}`);
+    }
 } catch (e) {
-    console.log(`   ⚠️  ffprobe failed, using caption duration`);
+    console.log(`  ffprobe failed, using caption duration as fallback`);
     if (captions.length > 0) {
         videoDurationMs = captions[captions.length - 1].endMs + 1000;
     }
 }
 
-// 3. Calculate frames (30fps)
-const fps = 30;
-const durationInFrames = Math.ceil((videoDurationMs / 1000) * fps);
+// 3. Calculate frames
+const durationInFrames = Math.ceil((videoDurationMs / 1000) * FPS);
+console.log(`  Duration: ${durationInFrames} frames (${(videoDurationMs / 1000).toFixed(1)}s @ ${FPS}fps)`);
 
-// 4. Build inputProps
+// 4. Build inputProps — INCLUDING durationInFrames and video dimensions
 const inputProps = {
     videoSrc: videoPath.replace(/^.*[/\\]/, ""),
     captions,
+    durationInFrames,
+    videoWidth,
+    videoHeight,
     highlightColor: HIGHLIGHT_COLOR,
     fontSize: FONT_SIZE,
     captionYPosition: CAPTION_Y,
@@ -74,6 +98,5 @@ const inputProps = {
 
 writeFileSync(outputPath, JSON.stringify(inputProps, null, 2));
 
-console.log(`   ✅ Props written to ${outputPath}`);
-console.log(`   📊 Duration: ${durationInFrames} frames (${(videoDurationMs / 1000).toFixed(1)}s @ ${fps}fps)`);
-console.log(`   🎨 Highlight: ${HIGHLIGHT_COLOR} | Font: ${FONT_SIZE}px | Y: ${CAPTION_Y}%`);
+console.log(`  Props written to ${outputPath}`);
+console.log(`  Highlight: ${HIGHLIGHT_COLOR} | Font: ${FONT_SIZE}px | Y: ${CAPTION_Y}%`);

@@ -20,23 +20,17 @@ const { fontFamily } = loadFont("normal", {
  * In production, these are passed from GitHub Actions CLI.
  */
 export interface CaptionedVideoProps {
-    /** Path to the source video file */
     videoSrc: string;
-    /** Whisper captions JSON - array of {text, startMs, endMs, confidence} */
     captions: Caption[];
-    /** Font family override (default: Montserrat) */
+    durationInFrames?: number;
+    videoWidth?: number;
+    videoHeight?: number;
     fontFamily?: string;
-    /** Color for the currently active/highlighted word */
     highlightColor: string;
-    /** Font size in pixels */
     fontSize: number;
-    /** Vertical position of captions (0-100, percentage from top) */
     captionYPosition: number;
-    /** Max words to show per caption page (2-3 for short punchy style) */
     maxWordsPerPage: number;
-    /** Background pill opacity (0-1) */
     backgroundOpacity: number;
-    /** Text stroke width in px */
     strokeWidth: number;
 }
 
@@ -45,9 +39,6 @@ export interface CaptionedVideoProps {
  *
  * Takes the original video + Whisper word-level captions and renders
  * animated TikTok-style captions with word-by-word highlighting.
- *
- * Caption style: 2-3 words per page, Montserrat Bold, active word
- * pops with color + scale animation.
  */
 export const CaptionedVideo: React.FC<CaptionedVideoProps> = ({
     videoSrc,
@@ -64,14 +55,12 @@ export const CaptionedVideo: React.FC<CaptionedVideoProps> = ({
     const currentTimeMs = (frame / fps) * 1000;
 
     // Use Remotion's createTikTokStyleCaptions to group words into short pages
-    // combineTokensWithinMilliseconds controls how aggressively words are grouped
     const { pages } = createTikTokStyleCaptions({
         captions,
         combineTokensWithinMilliseconds: 800,
     });
 
-    // Filter pages to enforce max 2-3 words per page
-    // createTikTokStyleCaptions groups by timing; we further split long pages
+    // Filter pages to enforce max words per page
     const shortPages = pages.flatMap((page) => {
         if (page.tokens.length <= maxWordsPerPage) {
             return [page];
@@ -98,11 +87,16 @@ export const CaptionedVideo: React.FC<CaptionedVideoProps> = ({
             currentTimeMs < page.startMs + page.durationMs
     );
 
+    // Resolve video source
+    const resolvedVideoSrc = videoSrc.startsWith("http")
+        ? videoSrc
+        : staticFile(videoSrc);
+
     return (
         <AbsoluteFill>
-            {/* Background video */}
+            {/* Background video — plays the full duration */}
             <OffthreadVideo
-                src={videoSrc.startsWith("http") ? videoSrc : staticFile(videoSrc)}
+                src={resolvedVideoSrc}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
 
