@@ -1,4 +1,4 @@
-name: 🎬 Caption Video Pipeline
+name: Caption Video Pipeline
 
 on:
   workflow_dispatch:
@@ -40,59 +40,51 @@ on:
 
 jobs:
   caption-video:
-    name: 🎙️ Transcribe & Render Captions
+    name: Transcribe and Render Captions
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      # ─── Setup ───
-      - name: 📥 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js 20
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: remotion-captions/package-lock.json
 
-      - name: 🐍 Setup Python 3.11
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      # ─── Download Video ───
-      - name: 📥 Download input video
+      - name: Download input video
         run: |
-          echo "⬇️ Downloading video..."
+          echo "Downloading video..."
           curl -L -o input.mp4 "${{ inputs.video_url }}"
           ls -lh input.mp4
-          echo "✅ Video downloaded: $(du -h input.mp4 | cut -f1)"
+          echo "Video downloaded: $(du -h input.mp4 | cut -f1)"
 
-      # ─── Extract Audio ───
-      - name: 🔊 Extract audio from video
+      - name: Extract audio from video
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           ffmpeg -i input.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav -y
-          echo "✅ Audio extracted: $(du -h audio.wav | cut -f1)"
+          echo "Audio extracted: $(du -h audio.wav | cut -f1)"
 
-      # ─── Whisper Transcription ───
-      - name: 🧠 Install faster-whisper
+      - name: Install faster-whisper
         run: |
           pip install faster-whisper requests
-          echo "✅ faster-whisper installed"
+          echo "faster-whisper installed"
 
-      - name: 🎙️ Transcribe with Whisper (Hinglish)
+      - name: Transcribe with Whisper (Hinglish)
         run: |
           python scripts/transcribe.py audio.wav \
             --model large-v3 \
             --output captions.json
-          echo "📝 Captions preview:"
+          echo "Captions preview:"
           head -c 500 captions.json
 
-      # ─── AI Enhancement (Optional) ───
-      - name: ✨ Enhance captions with AI
+      - name: Enhance captions with AI
         if: ${{ inputs.enhance_captions == 'true' }}
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -100,15 +92,14 @@ jobs:
           if [ -n "$GROQ_API_KEY" ]; then
             python scripts/enhance_captions.py captions.json --output captions.json
           else
-            echo "⚠️ No GROQ_API_KEY secret set, skipping AI enhancement"
+            echo "No GROQ_API_KEY secret set, skipping AI enhancement"
           fi
 
-      # ─── Remotion Render ───
-      - name: 📦 Install Remotion dependencies
+      - name: Install Remotion dependencies
         working-directory: remotion-captions
         run: npm ci
 
-      - name: 🔧 Prepare render props
+      - name: Prepare render props
         working-directory: remotion-captions
         env:
           HIGHLIGHT_COLOR: ${{ inputs.highlight_color }}
@@ -117,12 +108,11 @@ jobs:
           MAX_WORDS_PER_PAGE: ${{ inputs.max_words_per_page }}
           BG_OPACITY: ${{ inputs.bg_opacity }}
         run: |
-          # Copy files into remotion workspace
           cp ../input.mp4 public/input.mp4
           cp ../captions.json captions.json
           node scripts/prepare-render.mjs public/input.mp4 captions.json inputProps.json
 
-      - name: 🎨 Render captioned video
+      - name: Render captioned video
         working-directory: remotion-captions
         run: |
           npx remotion render CaptionedVideo output.mp4 \
@@ -130,15 +120,14 @@ jobs:
             --codec=h264 \
             --crf=18 \
             --log=verbose
-          echo "✅ Render complete: $(du -h output.mp4 | cut -f1)"
+          echo "Render complete: $(du -h output.mp4 | cut -f1)"
 
-      # ─── Upload to Google Drive via rclone ───
-      - name: ☁️ Install rclone
+      - name: Install rclone
         run: |
           curl https://rclone.org/install.sh | sudo bash
           rclone version
 
-      - name: ☁️ Upload to Google Drive (rclone)
+      - name: Upload to Google Drive
         env:
           RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
           RCLONE_REMOTE: gdrive
@@ -146,24 +135,23 @@ jobs:
         run: |
           python scripts/upload_gdrive.py remotion-captions/output.mp4 "$GDRIVE_FOLDER_ID"
 
-      # ─── Upload Artifact (Backup) ───
-      - name: 📦 Upload as GitHub Artifact
+      - name: Upload as GitHub Artifact
         uses: actions/upload-artifact@v4
         with:
           name: captioned-video-${{ github.run_id }}
           path: remotion-captions/output.mp4
           retention-days: 7
 
-      - name: 📦 Upload captions JSON
+      - name: Upload captions JSON
         uses: actions/upload-artifact@v4
         with:
           name: captions-json-${{ github.run_id }}
           path: captions.json
           retention-days: 7
 
-      - name: 🎉 Pipeline Summary
+      - name: Pipeline Summary
         run: |
-          echo "## 🎬 Caption Pipeline Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "## Caption Pipeline Complete!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
