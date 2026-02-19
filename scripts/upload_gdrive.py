@@ -46,10 +46,21 @@ def setup_rclone_config():
 def upload_to_drive(file_path: str, folder_id: str):
     """Upload a file to Google Drive folder using rclone."""
     
-    remote_name = os.environ.get("RCLONE_REMOTE", "gdrive")
+    # Setup config first
+    config_path = setup_rclone_config()
     
-    # Setup config
-    setup_rclone_config()
+    # Auto-detect remote name from config if not explicitly set
+    remote_name = os.environ.get("RCLONE_REMOTE", "")
+    if not remote_name:
+        import re
+        config_text = Path(config_path).read_text(encoding="utf-8", errors="ignore")
+        sections = re.findall(r'^\[(.+?)\]', config_text, re.MULTILINE)
+        if sections:
+            remote_name = sections[0]
+            print(f"Auto-detected rclone remote: '{remote_name}'")
+        else:
+            print("No remotes found in rclone config!")
+            sys.exit(1)
     
     # Verify rclone is installed
     try:
