@@ -60,9 +60,20 @@ jobs:
 
       - name: Download input video
         run: |
-          echo "Downloading video..."
-          curl -L -o input.mp4 "${{ inputs.video_url }}"
+          VIDEO_URL="${{ inputs.video_url }}"
+          
+          # Check if it's a Google Drive link and extract file ID
+          if echo "$VIDEO_URL" | grep -q "drive.google.com"; then
+            FILE_ID=$(echo "$VIDEO_URL" | grep -oP '(?<=/d/|id=)[^/&]+')
+            echo "Detected Google Drive link, file ID: $FILE_ID"
+            pip install gdown
+            gdown "https://drive.google.com/uc?id=$FILE_ID" -O input.mp4
+          else
+            curl -L -o input.mp4 "$VIDEO_URL"
+          fi
+          
           ls -lh input.mp4
+          file input.mp4
           echo "Video downloaded: $(du -h input.mp4 | cut -f1)"
 
       - name: Extract audio from video
