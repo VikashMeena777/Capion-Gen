@@ -108,7 +108,7 @@ jobs:
 
       - name: Install Remotion dependencies
         working-directory: remotion-captions
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Prepare render props
         working-directory: remotion-captions
