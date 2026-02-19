@@ -37,11 +37,6 @@ on:
         required: false
         default: 'true'
         type: string
-      gdrive_folder_id:
-        description: 'Google Drive folder ID for output upload'
-        required: false
-        default: ''
-        type: string
 
 jobs:
   caption-video:
@@ -139,18 +134,18 @@ jobs:
 
       # ─── Upload to Google Drive via rclone ───
       - name: ☁️ Install rclone
-        if: ${{ inputs.gdrive_folder_id != '' }}
+        if: ${{ secrets.GDRIVE_FOLDER_ID != '' }}
         run: |
           curl https://rclone.org/install.sh | sudo bash
           rclone version
 
       - name: ☁️ Upload to Google Drive (rclone)
-        if: ${{ inputs.gdrive_folder_id != '' }}
+        if: ${{ secrets.GDRIVE_FOLDER_ID != '' }}
         env:
           RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
-          RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE || 'vk889900' }}
+          RCLONE_REMOTE: gdrive
         run: |
-          python scripts/upload_gdrive.py remotion-captions/output.mp4 "${{ inputs.gdrive_folder_id }}"
+          python scripts/upload_gdrive.py remotion-captions/output.mp4 "${{ secrets.GDRIVE_FOLDER_ID }}"
 
       # ─── Upload Artifact (Backup) ───
       - name: 📦 Upload as GitHub Artifact
