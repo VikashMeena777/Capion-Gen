@@ -124,6 +124,20 @@ jobs:
           cp ../captions.json captions.json
           node scripts/prepare-render.mjs public/input.mp4 captions.json inputProps.json
 
+          # Debug: verify critical props are set
+          echo "--- inputProps summary ---"
+          node -e "
+            const p = JSON.parse(require('fs').readFileSync('inputProps.json','utf8'));
+            console.log('videoSrc:', p.videoSrc);
+            console.log('durationInFrames:', p.durationInFrames);
+            console.log('videoWidth:', p.videoWidth, 'videoHeight:', p.videoHeight);
+            console.log('captions count:', p.captions?.length);
+            if (p.captions?.length > 0) {
+              console.log('first caption:', JSON.stringify(p.captions[0]));
+              console.log('last caption:', JSON.stringify(p.captions[p.captions.length-1]));
+            }
+          "
+
       - name: Render captioned video
         working-directory: remotion-captions
         run: |
@@ -131,8 +145,14 @@ jobs:
             --props=./inputProps.json \
             --codec=h264 \
             --crf=18 \
-            --log=verbose
+            --log=verbose \
+            --timeout=120000
+          
           echo "Render complete: $(du -h output.mp4 | cut -f1)"
+          
+          # Verify output duration
+          ffprobe -v quiet -show_entries format=duration -of csv=p=0 output.mp4 | \
+            xargs -I {} echo "Output video duration: {}s"
 
       - name: Install rclone
         run: |
