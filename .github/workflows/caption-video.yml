@@ -128,7 +128,7 @@ jobs:
         working-directory: remotion-captions
         run: |
           npx remotion render CaptionedVideo output.mp4 \
-            --props="$(cat inputProps.json)" \
+            --props=./inputProps.json \
             --codec=h264 \
             --crf=18 \
             --log=verbose
