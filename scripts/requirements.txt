@@ -1,2 +1,4 @@
-faster-whisper
+transformers
+torch
+torchaudio
 requests
