@@ -9,7 +9,6 @@
 
 import { readFileSync, writeFileSync, statSync } from "fs";
 import { execSync } from "child_process";
-import { resolve } from "path";
 
 const args = process.argv.slice(2);
 const videoPath = args[0] || "input.mp4";
@@ -63,7 +62,7 @@ const durationInFrames = Math.ceil((videoDurationMs / 1000) * fps);
 
 // 4. Build inputProps
 const inputProps = {
-    videoSrc: resolve(videoPath),
+    videoSrc: videoPath.replace(/^.*[/\\]/, ""),
     captions,
     highlightColor: HIGHLIGHT_COLOR,
     fontSize: FONT_SIZE,
