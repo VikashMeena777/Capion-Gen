@@ -119,6 +119,7 @@ jobs:
           MAX_WORDS_PER_PAGE: ${{ inputs.max_words_per_page }}
           BG_OPACITY: ${{ inputs.bg_opacity }}
         run: |
+          mkdir -p public
           cp ../input.mp4 public/input.mp4
           cp ../captions.json captions.json
           node scripts/prepare-render.mjs public/input.mp4 captions.json inputProps.json
