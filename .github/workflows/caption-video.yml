@@ -82,15 +82,15 @@ jobs:
           ffmpeg -i input.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav -y
           echo "Audio extracted: $(du -h audio.wav | cut -f1)"
 
-      - name: Install faster-whisper
+      - name: Install whisper dependencies
         run: |
-          pip install faster-whisper requests
-          echo "faster-whisper installed"
+          pip install transformers torch torchaudio requests
+          echo "transformers + whisper installed"
 
       - name: Transcribe with Whisper (Hinglish)
         run: |
           python scripts/transcribe.py audio.wav \
-            --model large-v3 \
+            --model oriserve/whisper-hindi2hinglish-apex \
             --output captions.json
           echo "Captions preview:"
           head -c 500 captions.json
@@ -108,7 +108,7 @@ jobs:
 
       - name: Install Remotion dependencies
         working-directory: remotion-captions
-        run: npm ci
+        run: npm install
 
       - name: Prepare render props
         working-directory: remotion-captions
