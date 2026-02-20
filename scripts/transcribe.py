@@ -2,9 +2,9 @@
 """
 transcribe.py - Transcribe audio to Hinglish using oriserve/whisper-hindi2hinglish-apex
 
-Uses the HuggingFace transformers pipeline for ASR with word-level timestamps.
-This model is fine-tuned on 700+ hours of noisy Indian audio for Hindi-to-Hinglish
-(Roman script) transcription.
+Uses the HuggingFace transformers pipeline for ASR.
+Since this model produces compressed timestamps, we use the actual
+audio duration (via ffprobe) to distribute word timings accurately.
 
 Usage:
     python transcribe.py audio.wav --output captions.json
@@ -13,9 +13,29 @@ Usage:
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
+
+
+def get_audio_duration_ms(audio_path: str) -> int:
+    """Get audio duration in milliseconds using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet",
+                "-show_entries", "format=duration",
+                "-of", "csv=p=0",
+                audio_path,
+            ],
+            capture_output=True, text=True,
+        )
+        duration_s = float(result.stdout.strip())
+        return int(duration_s * 1000)
+    except Exception as e:
+        print(f"Warning: ffprobe failed ({e}), will estimate from word count")
+        return 0
 
 
 def transcribe_audio(audio_path: str, model_name: str, output_path: str):
@@ -25,6 +45,11 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
     print(f"Audio file: {audio_path}")
     start_time = time.time()
 
+    # Get actual audio duration FIRST
+    audio_duration_ms = get_audio_duration_ms(audio_path)
+    if audio_duration_ms > 0:
+        print(f"Audio duration: {audio_duration_ms / 1000:.1f}s")
+
     import torch
     from transformers import pipeline
 
@@ -33,7 +58,7 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
 
     print(f"Device: {device}, dtype: {torch_dtype}")
 
-    # Load ASR pipeline with word-level timestamps
+    # Load ASR pipeline
     pipe = pipeline(
         "automatic-speech-recognition",
         model=model_name,
@@ -58,56 +83,50 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
     transcribe_time = time.time() - transcribe_start
     print(f"Transcription complete in {transcribe_time:.1f}s")
 
-    # Parse output into caption format
-    # Use chunk-level timestamps and distribute words evenly within each chunk
-    captions = []
-    full_text_parts = []
-
+    # Collect all words from chunks
+    all_words = []
     if "chunks" in result:
         for chunk in result["chunks"]:
             chunk_text = chunk["text"].strip()
             if not chunk_text:
                 continue
-
-            timestamps = chunk.get("timestamp", (0, 0))
-            chunk_start_s = timestamps[0] or 0
-            chunk_end_s = timestamps[1] or (chunk_start_s + 1)
-
-            words = chunk_text.split()
-            if not words:
-                continue
-
-            # Distribute time evenly across words in the chunk
-            chunk_duration = chunk_end_s - chunk_start_s
-            word_duration = chunk_duration / len(words)
-
-            for i, word in enumerate(words):
-                start_ms = int((chunk_start_s + i * word_duration) * 1000)
-                end_ms = int((chunk_start_s + (i + 1) * word_duration) * 1000)
-
-                captions.append({
-                    "text": word,
-                    "startMs": start_ms,
-                    "endMs": end_ms,
-                    "confidence": 0.9,
-                })
-                full_text_parts.append(word)
+            for w in chunk_text.split():
+                all_words.append(w)
+        print(f"Extracted {len(all_words)} words from {len(result['chunks'])} chunks")
     else:
-        # Fallback: no timestamps at all
         text = result.get("text", "")
-        words = text.split()
-        for i, word in enumerate(words):
-            start_ms = i * 300
-            end_ms = start_ms + 280
-            captions.append({
-                "text": word,
-                "startMs": start_ms,
-                "endMs": end_ms,
-                "confidence": 0.5,
-            })
-            full_text_parts.append(word)
+        all_words = text.split()
+        print(f"Extracted {len(all_words)} words (no chunks)")
 
-    full_text = " ".join(full_text_parts)
+    if not all_words:
+        print("ERROR: No words transcribed!")
+        sys.exit(1)
+
+    # Use actual audio duration to distribute words evenly
+    if audio_duration_ms <= 0:
+        audio_duration_ms = len(all_words) * 300  # fallback ~300ms/word
+        print(f"Estimated duration: {audio_duration_ms / 1000:.1f}s")
+
+    # Leave small buffer at start/end
+    start_offset_ms = 200
+    end_buffer_ms = 500
+    usable_duration = audio_duration_ms - start_offset_ms - end_buffer_ms
+    word_duration_ms = usable_duration / len(all_words)
+
+    captions = []
+    for i, word in enumerate(all_words):
+        s = int(start_offset_ms + i * word_duration_ms)
+        e = int(start_offset_ms + (i + 1) * word_duration_ms)
+        captions.append({
+            "text": word,
+            "startMs": s,
+            "endMs": e,
+            "confidence": 0.9,
+        })
+
+    print(f"Distributed {len(captions)} words across {audio_duration_ms / 1000:.1f}s (~{word_duration_ms:.0f}ms/word)")
+
+    full_text = " ".join(all_words)
 
     output = {
         "text": full_text,
@@ -116,7 +135,9 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
         "captions": captions,
         "stats": {
             "total_words": len(captions),
-            "duration_ms": captions[-1]["endMs"] if captions else 0,
+            "audio_duration_ms": audio_duration_ms,
+            "first_word_ms": captions[0]["startMs"],
+            "last_word_ms": captions[-1]["endMs"],
             "model_load_time_s": round(load_time, 1),
             "transcribe_time_s": round(transcribe_time, 1),
         },
@@ -130,9 +151,11 @@ def transcribe_audio(audio_path: str, model_name: str, output_path: str):
 
     print(f"\nResults:")
     print(f"  Words: {len(captions)}")
-    print(f"  Duration: {output['stats']['duration_ms']}ms")
-    print(f"  Text: {full_text[:200]}...")
-    print(f"  Saved to: {output_path}")
+    print(f"  First: '{captions[0]['text']}' at {captions[0]['startMs']}ms")
+    print(f"  Last:  '{captions[-1]['text']}' at {captions[-1]['endMs']}ms")
+    print(f"  Audio: {audio_duration_ms / 1000:.1f}s")
+    print(f"  Text:  {full_text[:200]}...")
+    print(f"  Saved: {output_path}")
 
     return output
 
